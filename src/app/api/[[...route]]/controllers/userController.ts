@@ -1,23 +1,22 @@
 import { Context } from 'hono';
 import bcrypt from 'bcryptjs';
-import { prisma } from '@/config/prisma';
+import { prisma } from '@/lib/prisma';
 import { generateToken, validatePassword, validateEmail } from '../helpers';
 
-// Create User
-export const createUser = async (c: Context) => {
+export const registerUser = async (c: Context) => {
     const { name, email, password } = await c.req.json();
 
     if (!name || !email || !password) {
         return c.json(
             {
                 success: false,
-                message: 'All fields must be filled, including role',
+                message: 'All fields must be filled.',
             },
             400
         );
     }
 
-    const existingEmail = await prisma.users.findUnique({
+    const existingEmail = await prisma.user.findUnique({
         where: { email },
     });
 
@@ -31,7 +30,7 @@ export const createUser = async (c: Context) => {
         );
     }
 
-    const existingUsername = await prisma.users.findUnique({
+    const existingUsername = await prisma.user.findUnique({
         where: { name },
     });
 
@@ -52,19 +51,13 @@ export const createUser = async (c: Context) => {
 
     const passwordError = validatePassword(password);
     if (passwordError) {
-        return c.json(
-            {
-                success: false,
-                message: passwordError,
-            },
-            400
-        );
+        return c.json({ success: false, message: passwordError }, 400);
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     try {
-        const user = await prisma.users.create({
+        const user = await prisma.user.create({
             data: {
                 name,
                 email,
@@ -76,6 +69,11 @@ export const createUser = async (c: Context) => {
             {
                 success: true,
                 message: `User ${user.name} created successfully.`,
+                data: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                },
             },
             201
         );
@@ -83,7 +81,7 @@ export const createUser = async (c: Context) => {
         return c.json(
             {
                 success: false,
-                message: 'Failed create user',
+                message: 'Failed to create user.',
                 error: err instanceof Error ? err.message : String(err),
             },
             500
@@ -91,7 +89,63 @@ export const createUser = async (c: Context) => {
     }
 };
 
-// Update User
+export const loginUser = async (c: Context) => {
+    const { email, password } = await c.req.json();
+
+    if (!email || !password) {
+        return c.json(
+            {
+                success: false,
+                message: 'Email and password is required.',
+            },
+            400
+        );
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+        return c.json(
+            {
+                success: false,
+                message: 'Email not registered',
+                error: 'email',
+            },
+            401
+        );
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+        return c.json(
+            {
+                success: false,
+                message: 'Wrong password',
+                error: 'password',
+            },
+            401
+        );
+    }
+
+    const token = await generateToken(user.id, user.name, user.photo);
+
+    return c.json(
+        {
+            success: true,
+            message: 'Login successfully.',
+            data: {
+                token,
+                user: {
+                    name: user.name,
+                    email: user.email,
+                    photo: user.photo,
+                },
+            },
+        },
+        200
+    );
+};
+
 export const updateUser = async (c: Context) => {
     const id = parseInt(c.req.param('id'));
     if (!id || isNaN(id)) {
@@ -128,7 +182,7 @@ export const updateUser = async (c: Context) => {
         password: string;
     }> = {};
 
-    const existingUser = await prisma.users.findUnique({
+    const existingUser = await prisma.user.findUnique({
         where: { id },
     });
 
@@ -137,7 +191,7 @@ export const updateUser = async (c: Context) => {
     }
 
     if (name !== undefined && name !== existingUser.name) {
-        const nameExists = await prisma.users.findFirst({
+        const nameExists = await prisma.user.findFirst({
             where: { name, NOT: { id } },
         });
 
@@ -153,7 +207,7 @@ export const updateUser = async (c: Context) => {
             return c.json({ success: false, message: emailError }, 400);
         }
 
-        const emailExists = await prisma.users.findFirst({
+        const emailExists = await prisma.user.findFirst({
             where: { email, NOT: { id } },
         });
 
@@ -187,8 +241,9 @@ export const updateUser = async (c: Context) => {
     }
 
     try {
-        const updatedUser = await prisma.users.update({
+        const updatedUser = await prisma.user.update({
             where: { id },
+            data: updateData,
         });
 
         return c.json(
@@ -210,7 +265,6 @@ export const updateUser = async (c: Context) => {
     }
 };
 
-// Delete User
 export const deleteUser = async (c: Context) => {
     const id = parseInt(c.req.param('id'));
     if (!id || isNaN(id)) {
@@ -229,14 +283,14 @@ export const deleteUser = async (c: Context) => {
         return c.json(
             {
                 success: false,
-                message: 'You can only update your own profile.',
+                message: 'You can only delete your own profile.',
             },
             403
         );
     }
 
     try {
-        const existing = await prisma.users.findUnique({ where: { id } });
+        const existing = await prisma.user.findUnique({ where: { id } });
 
         if (!existing) {
             return c.json(
@@ -248,7 +302,7 @@ export const deleteUser = async (c: Context) => {
             );
         }
 
-        await prisma.users.delete({ where: { id } });
+        await prisma.user.delete({ where: { id } });
 
         return c.json(
             {
@@ -269,60 +323,4 @@ export const deleteUser = async (c: Context) => {
     }
 };
 
-// Login User
-export const loginUser = async (c: Context) => {
-    const { email, password } = await c.req.json();
 
-    if (!email || !password) {
-        return c.json(
-            {
-                success: false,
-                message: 'Email and password is required.',
-            },
-            400
-        );
-    }
-
-    const user = await prisma.users.findUnique({ where: { email } });
-
-    if (!user) {
-        return c.json(
-            {
-                success: false,
-                message: 'Email not registered',
-                error: 'email',
-            },
-            401
-        );
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-        return c.json(
-            {
-                success: false,
-                message: 'Wrong password',
-                error: 'password',
-            },
-            401
-        );
-    }
-
-    const token = await generateToken(user.id, user.name, user.role);
-
-    return c.json(
-        {
-            success: true,
-            message: 'Login successfully.',
-            data: {
-                token,
-                user: {
-                    name: user.name,
-                    email: user.email,
-                    photo: user.photo,
-                },
-            },
-        },
-        200
-    );
-};

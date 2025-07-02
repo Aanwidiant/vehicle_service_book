@@ -322,5 +322,3 @@ export const deleteUser = async (c: Context) => {
         );
     }
 };
-
-

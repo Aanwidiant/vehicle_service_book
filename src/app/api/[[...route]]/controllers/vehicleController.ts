@@ -9,14 +9,19 @@ export const createVehicle = async (c: Context) => {
 
     const { brand, model, plateNumber, year, currentKm } = body;
 
-    if (!brand || !model || !plateNumber || !year || !currentKm) {
-        return c.json(
-            {
-                success: false,
-                message: 'All fields except photo are required.',
-            },
-            400
-        );
+    const requiredFields = ['brand', 'model', 'plateNumber', 'year', 'currentKm'];
+
+    const missingField = requiredFields.find((field) => {
+        const value = body[field];
+        return value === undefined || value === null || value === '';
+    });
+
+    if (missingField) {
+        return c.json({ success: false, message: `Field ${missingField} is required` }, 400);
+    }
+
+    if (isNaN(Number(year)) || isNaN(Number(currentKm))) {
+        return c.json({ success: false, message: 'Year and currentKm must be numbers' }, 400);
     }
 
     const existingPlateNumber = await prisma.vehicle.findFirst({

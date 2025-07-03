@@ -146,6 +146,52 @@ export const loginUser = async (c: Context) => {
     );
 };
 
+export const getUser = async (c: Context) => {
+    const user = c.get('user');
+    const userId = user.id
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                photo: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+
+        if (!user) {
+            return c.json(
+                {
+                    success: false,
+                    message: 'User not found.',
+                },
+                404
+            );
+        }
+
+        return c.json(
+            {
+                success: true,
+                data: user,
+            },
+            200
+        );
+    } catch (err) {
+        return c.json(
+            {
+                success: false,
+                message: 'Failed to retrieve user.',
+                error: err instanceof Error ? err.message : String(err),
+            },
+            500
+        );
+    }
+};
+
 export const updateUser = async (c: Context) => {
     const id = parseInt(c.req.param('id'));
     if (!id || isNaN(id)) {

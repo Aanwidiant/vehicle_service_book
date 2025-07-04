@@ -371,8 +371,9 @@ export const deleteUser = async (c: Context) => {
 };
 
 export const uploadImage = async (c: Context) => {
-    const user = c.get('user');
-    const userId = user.id
+    const currentUser = c.get('user');
+    const userId = currentUser.id;
+
     const file = await c.req.parseBody().then(body => body['file']);
 
     if (!file || !(file instanceof File)) {
@@ -407,9 +408,9 @@ export const uploadImage = async (c: Context) => {
     }
 
     try {
-        const user = await prisma.user.findUnique({
+        const existingUser = await prisma.user.findUnique({
             where: { id: userId },
-            select: { photo: true }
+            select: { photo: true, name: true }
         });
 
         const fileExt = file.name.split('.').pop();
@@ -435,28 +436,21 @@ export const uploadImage = async (c: Context) => {
             );
         }
 
-        const { data: urlData } = supabase.storage
-            .from('moto-track')
-            .getPublicUrl(filePath);
+        if (existingUser?.photo) {
+            await supabase.storage
+                .from('moto-track')
+                .remove([existingUser.photo])
+                .catch(err => console.error('Error deleting old photo:', err));
+        }
 
         const updatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { photo: urlData.publicUrl },
+            data: { photo: filePath },
             select: {
                 name: true,
                 photo: true
             }
         });
-
-        if (user?.photo) {
-            const oldPhotoPath = user.photo.split('/user/').pop();
-            if (oldPhotoPath) {
-                await supabase.storage
-                    .from('moto-track')
-                    .remove([`user/${oldPhotoPath}`])
-                    .catch(err => console.error('Error deleting old photo:', err));
-            }
-        }
 
         return c.json({
             success: true,

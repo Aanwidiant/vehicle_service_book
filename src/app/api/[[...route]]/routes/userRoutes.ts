@@ -9,5 +9,6 @@ users.get('/', protect, (c) => user.getUser(c));
 users.patch('/:id', protect, (c) => user.updateUser(c));
 users.delete('/:id', protect, (c) => user.deleteUser(c));
 users.post('/login', (c) => user.loginUser(c));
+users.post('/image', protect, (c) => user.uploadImage(c));
 
 export default users;

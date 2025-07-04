@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { generateToken, validatePassword, validateEmail } from '../helpers';
+import { supabase } from '@/lib/supabase'
 
 export const registerUser = async (c: Context) => {
     const { name, email, password } = await c.req.json();
@@ -362,6 +363,113 @@ export const deleteUser = async (c: Context) => {
             {
                 success: false,
                 message: 'Failed to delete User.',
+                error: err instanceof Error ? err.message : String(err),
+            },
+            500
+        );
+    }
+};
+
+export const uploadImage = async (c: Context) => {
+    const user = c.get('user');
+    const userId = user.id
+    const file = await c.req.parseBody().then(body => body['file']);
+
+    if (!file || !(file instanceof File)) {
+        return c.json(
+            {
+                success: false,
+                message: 'No file uploaded or invalid file format.',
+            },
+            400
+        );
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        return c.json(
+            {
+                success: false,
+                message: 'File size exceeds 5MB limit.',
+            },
+            400
+        );
+    }
+
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedMimeTypes.includes(file.type)) {
+        return c.json(
+            {
+                success: false,
+                message: 'Only JPEG, PNG, GIF, and WebP images are allowed.',
+            },
+            400
+        );
+    }
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { photo: true }
+        });
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `user_${userId}_${Date.now()}.${fileExt}`;
+        const filePath = `user/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('moto-track')
+            .upload(filePath, await file.arrayBuffer(), {
+                contentType: file.type,
+                upsert: true
+            });
+
+        if (uploadError) {
+            console.error('Supabase Upload Error:', uploadError);
+            return c.json(
+                {
+                    success: false,
+                    message: 'Failed to upload image to storage',
+                    error: uploadError.message,
+                },
+                500
+            );
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('moto-track')
+            .getPublicUrl(filePath);
+
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: { photo: urlData.publicUrl },
+            select: {
+                name: true,
+                photo: true
+            }
+        });
+
+        if (user?.photo) {
+            const oldPhotoPath = user.photo.split('/user/').pop();
+            if (oldPhotoPath) {
+                await supabase.storage
+                    .from('moto-track')
+                    .remove([`user/${oldPhotoPath}`])
+                    .catch(err => console.error('Error deleting old photo:', err));
+            }
+        }
+
+        return c.json({
+            success: true,
+            message: 'Image uploaded successfully',
+            data: updatedUser
+        });
+
+    } catch (err) {
+        console.error('Upload error:', err);
+        return c.json(
+            {
+                success: false,
+                message: 'Failed to upload image',
                 error: err instanceof Error ? err.message : String(err),
             },
             500

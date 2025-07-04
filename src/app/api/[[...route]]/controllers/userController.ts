@@ -137,6 +137,7 @@ export const loginUser = async (c: Context) => {
             data: {
                 token,
                 user: {
+                    id: user.id,
                     name: user.name,
                     email: user.email,
                     photo: user.photo,
@@ -291,12 +292,19 @@ export const updateUser = async (c: Context) => {
         const updatedUser = await prisma.user.update({
             where: { id },
             data: updateData,
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                photo: true,
+            }
         });
 
         return c.json(
             {
                 success: true,
                 message: `User ${updatedUser.name} updated successfully`,
+                data: updatedUser
             },
             200
         );

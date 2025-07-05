@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { supabase } from '@/lib/supabase';
 
 export const createVehicle = async (c: Context) => {
     const body = await c.req.json();
@@ -305,6 +306,129 @@ export const deleteVehicle = async (c: Context) => {
             {
                 success: false,
                 message: 'Failed to delete vehicle.',
+                error: err instanceof Error ? err.message : String(err),
+            },
+            500
+        );
+    }
+};
+
+export const uploadImage = async (c: Context) => {
+    const vehicleId = Number(c.req.param('id'));
+    const user = c.get('user');
+
+    const vehicle = await prisma.vehicle.findUnique({
+        where: { id: vehicleId },
+    });
+
+    if (!vehicle) {
+        return c.json(
+            {
+                success: false,
+                message: 'Vehicle not found.',
+            },
+            404
+        );
+    }
+
+    if (vehicle.userId !== user.id) {
+        return c.json(
+            {
+                success: false,
+                message: 'You are not authorized to update image this vehicle.',
+            },
+            403
+        );
+    }
+
+    const file = await c.req.parseBody().then((body) => body['file']);
+
+    if (!file || !(file instanceof File)) {
+        return c.json(
+            {
+                success: false,
+                message: 'No file uploaded or invalid file format.',
+            },
+            400
+        );
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        return c.json(
+            {
+                success: false,
+                message: 'File size exceeds 5MB limit.',
+            },
+            400
+        );
+    }
+
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedMimeTypes.includes(file.type)) {
+        return c.json(
+            {
+                success: false,
+                message: 'Only JPEG, PNG, GIF, and WebP images are allowed.',
+            },
+            400
+        );
+    }
+
+    try {
+        const existingVehicle = await prisma.vehicle.findUnique({
+            where: { id: vehicleId },
+            select: { photo: true },
+        });
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `vehicle_${vehicleId}_${Date.now()}.${fileExt}`;
+        const filePath = `vehicle/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('moto-track')
+            .upload(filePath, await file.arrayBuffer(), {
+                contentType: file.type,
+                upsert: true,
+            });
+
+        if (uploadError) {
+            return c.json(
+                {
+                    success: false,
+                    message: 'Failed to upload image vehicle to storage',
+                    error: uploadError.message,
+                },
+                500
+            );
+        }
+
+        if (existingVehicle?.photo) {
+            await supabase.storage
+                .from('moto-track')
+                .remove([existingVehicle.photo])
+                .catch((err) => console.error('Error deleting old photo vehicle:', err));
+        }
+
+        const updatedVehicle = await prisma.vehicle.update({
+            where: { id: vehicleId },
+            data: { photo: filePath },
+            select: {
+                plateNumber: true,
+                photo: true,
+            },
+        });
+
+        return c.json({
+            success: true,
+            message: 'Image vehicle uploaded successfully',
+            data: updatedVehicle,
+        });
+    } catch (err) {
+        console.error('Upload error:', err);
+        return c.json(
+            {
+                success: false,
+                message: 'Failed to upload image vehicle',
                 error: err instanceof Error ? err.message : String(err),
             },
             500

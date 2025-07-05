@@ -9,5 +9,6 @@ vehicles.get('/:id', protect, (c) => vehicle.getVehicle(c));
 vehicles.post('/', protect, (c) => vehicle.createVehicle(c));
 vehicles.patch('/:id', protect, (c) => vehicle.updateVehicle(c));
 vehicles.delete('/:id', protect, (c) => vehicle.deleteVehicle(c));
+vehicles.post('/image/:id', protect, (c) => vehicle.uploadImage(c));
 
 export default vehicles;

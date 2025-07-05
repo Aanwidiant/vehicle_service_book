@@ -2,7 +2,7 @@ import { Context } from 'hono';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { generateToken, validatePassword, validateEmail } from '../helpers';
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase';
 
 export const registerUser = async (c: Context) => {
     const { name, email, password } = await c.req.json();
@@ -150,7 +150,7 @@ export const loginUser = async (c: Context) => {
 
 export const getUser = async (c: Context) => {
     const user = c.get('user');
-    const userId = user.id
+    const userId = user.id;
 
     try {
         const user = await prisma.user.findUnique({
@@ -297,14 +297,14 @@ export const updateUser = async (c: Context) => {
                 name: true,
                 email: true,
                 photo: true,
-            }
+            },
         });
 
         return c.json(
             {
                 success: true,
                 message: `User ${updatedUser.name} updated successfully`,
-                data: updatedUser
+                data: updatedUser,
             },
             200
         );
@@ -382,7 +382,7 @@ export const uploadImage = async (c: Context) => {
     const currentUser = c.get('user');
     const userId = currentUser.id;
 
-    const file = await c.req.parseBody().then(body => body['file']);
+    const file = await c.req.parseBody().then((body) => body['file']);
 
     if (!file || !(file instanceof File)) {
         return c.json(
@@ -418,7 +418,7 @@ export const uploadImage = async (c: Context) => {
     try {
         const existingUser = await prisma.user.findUnique({
             where: { id: userId },
-            select: { photo: true, name: true }
+            select: { photo: true, name: true },
         });
 
         const fileExt = file.name.split('.').pop();
@@ -429,15 +429,14 @@ export const uploadImage = async (c: Context) => {
             .from('moto-track')
             .upload(filePath, await file.arrayBuffer(), {
                 contentType: file.type,
-                upsert: true
+                upsert: true,
             });
 
         if (uploadError) {
-            console.error('Supabase Upload Error:', uploadError);
             return c.json(
                 {
                     success: false,
-                    message: 'Failed to upload image to storage',
+                    message: 'Failed to upload profile image to storage',
                     error: uploadError.message,
                 },
                 500
@@ -448,7 +447,7 @@ export const uploadImage = async (c: Context) => {
             await supabase.storage
                 .from('moto-track')
                 .remove([existingUser.photo])
-                .catch(err => console.error('Error deleting old photo:', err));
+                .catch((err) => console.error('Error deleting old profile photo:', err));
         }
 
         const updatedUser = await prisma.user.update({
@@ -456,22 +455,21 @@ export const uploadImage = async (c: Context) => {
             data: { photo: filePath },
             select: {
                 name: true,
-                photo: true
-            }
+                photo: true,
+            },
         });
 
         return c.json({
             success: true,
-            message: 'Image uploaded successfully',
-            data: updatedUser
+            message: 'Profile image uploaded successfully',
+            data: updatedUser,
         });
-
     } catch (err) {
         console.error('Upload error:', err);
         return c.json(
             {
                 success: false,
-                message: 'Failed to upload image',
+                message: 'Failed to upload profile image',
                 error: err instanceof Error ? err.message : String(err),
             },
             500

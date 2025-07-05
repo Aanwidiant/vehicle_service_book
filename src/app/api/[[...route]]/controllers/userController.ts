@@ -357,6 +357,13 @@ export const deleteUser = async (c: Context) => {
             );
         }
 
+        if (existing?.photo) {
+            await supabase.storage
+                .from('moto-track')
+                .remove([existing.photo])
+                .catch((err) => console.error('Error deleting old profile photo:', err));
+        }
+
         await prisma.user.delete({ where: { id } });
 
         return c.json(

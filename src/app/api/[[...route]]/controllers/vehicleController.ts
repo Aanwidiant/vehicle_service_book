@@ -290,6 +290,13 @@ export const deleteVehicle = async (c: Context) => {
             );
         }
 
+        if (vehicle.photo) {
+            await supabase.storage
+                .from('moto-track')
+                .remove([vehicle.photo])
+                .catch((err) => console.error('Error deleting old photo vehicle:', err));
+        }
+
         await prisma.vehicle.delete({
             where: { id: vehicleId },
         });
